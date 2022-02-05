@@ -4,83 +4,33 @@
 
 namespace Supercluster.KDTree
 {
-    using System;
-    using System.Runtime.CompilerServices;
+    using System.Numerics;
 
     /// <summary>
     /// Represents a hyper-rectangle. An N-Dimensional rectangle.
     /// </summary>
-    /// <typeparam name="T">The type of "dimension" in the metric space in which the hyper-rectangle lives.</typeparam>
-    public struct HyperRect<T>
-        where T : IComparable<T>
+    public struct HyperRect
     {
         /// <summary>
         /// Backing field for the <see cref="MinPoint"/> property.
         /// </summary>
-        private T[] minPoint;
+        public Vector3 MinPoint;
 
         /// <summary>
         /// Backing field for the <see cref="MaxPoint"/> property.
         /// </summary>
-        private T[] maxPoint;
-
-        /// <summary>
-        /// The minimum point of the hyper-rectangle. One can think of this point as the
-        /// bottom-left point of a 2-Dimensional rectangle.
-        /// </summary>
-        public T[] MinPoint
-        {
-            get
-            {
-                return this.minPoint;
-            }
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            set
-            {
-                this.minPoint = new T[value.Length];
-                value.CopyTo(this.minPoint, 0);
-            }
-        }
-
-        /// <summary>
-        /// The maximum point of the hyper-rectangle. One can think of this point as the
-        /// top-right point of a 2-Dimensional rectangle.
-        /// </summary>
-        public T[] MaxPoint
-        {
-            get
-            {
-                return this.maxPoint;
-            }
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            set
-            {
-                this.maxPoint = new T[value.Length];
-                value.CopyTo(this.maxPoint, 0);
-            }
-        }
+        public Vector3 MaxPoint;
 
         /// <summary>
         /// Get a hyper rectangle which spans the entire implicit metric space.
         /// </summary>
-        /// <param name="dimensions">The number of dimensions in the hyper-rectangle's metric space.</param>
-        /// <param name="positiveInfinity">The smallest possible values in any given dimension.</param>
-        /// <param name="negativeInfinity">The largest possible values in any given dimension.</param>
         /// <returns>The hyper-rectangle which spans the entire metric space.</returns>
-        public static HyperRect<T> Infinite(int dimensions, T positiveInfinity, T negativeInfinity)
+        public static HyperRect Infinite()
         {
-            var rect = default(HyperRect<T>);
+            var rect = default(HyperRect);
 
-            rect.MinPoint = new T[dimensions];
-            rect.MaxPoint = new T[dimensions];
-
-            for (var dimension = 0; dimension < dimensions; dimension++)
-            {
-                rect.MinPoint[dimension] = negativeInfinity;
-                rect.MaxPoint[dimension] = positiveInfinity;
-            }
+            rect.MinPoint = new Vector3(float.MinValue);
+            rect.MaxPoint = new Vector3(float.MaxValue);
 
             return rect;
         }
@@ -93,40 +43,61 @@ namespace Supercluster.KDTree
         /// </summary>
         /// <param name="toPoint">We try to find a point in or on the rectangle closest to this point.</param>
         /// <returns>The point on or in the rectangle that is closest to the given point.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public T[] GetClosestPoint(T[] toPoint)
+        public Vector3 GetClosestPoint(Vector3 toPoint)
         {
-            var closest = new T[toPoint.Length];
+            var closest = Vector3.Zero;
 
-            for (var dimension = 0; dimension < toPoint.Length; dimension++)
+            if (this.MinPoint.X.CompareTo(toPoint.X) > 0)
             {
-                if (this.minPoint[dimension].CompareTo(toPoint[dimension]) > 0)
-                {
-                    closest[dimension] = this.minPoint[dimension];
-                }
-                else if (this.maxPoint[dimension].CompareTo(toPoint[dimension]) < 0)
-                {
-                    closest[dimension] = this.maxPoint[dimension];
-                }
-                else
-                {
-                    // Point is within rectangle, at least on this dimension
-                    closest[dimension] = toPoint[dimension];
-                }
+                closest.X = this.MinPoint.X;
+            }
+            else if (this.MaxPoint.X.CompareTo(toPoint.X) < 0)
+            {
+                closest.X = this.MaxPoint.X;
+            }
+            else
+            {
+                closest.X = toPoint.X;
+            }
+
+            if (this.MinPoint.Y.CompareTo(toPoint.Y) > 0)
+            {
+                closest.Y = this.MinPoint.Y;
+            }
+            else if (this.MaxPoint.Y.CompareTo(toPoint.Y) < 0)
+            {
+                closest.Y = this.MaxPoint.Y;
+            }
+            else
+            {
+                closest.Y = toPoint.Y;
+            }
+
+            if (this.MinPoint.Z.CompareTo(toPoint.Z) > 0)
+            {
+                closest.Z = this.MinPoint.Z;
+            }
+            else if (this.MaxPoint.Z.CompareTo(toPoint.Z) < 0)
+            {
+                closest.Z = this.MaxPoint.Z;
+            }
+            else
+            {
+                closest.Z = toPoint.Z;
             }
 
             return closest;
         }
 
         /// <summary>
-        /// Clones the <see cref="HyperRect{T}"/>.
+        /// Clones the <see cref="HyperRect"/>.
         /// </summary>
-        /// <returns>A clone of the <see cref="HyperRect{T}"/></returns>
-        public HyperRect<T> Clone()
+        /// <returns>A clone of the <see cref="HyperRect"/></returns>
+        public HyperRect Clone()
         {
             // For a discussion of why we don't implement ICloneable
             // see http://stackoverflow.com/questions/536349/why-no-icloneablet
-            var rect = default(HyperRect<T>);
+            var rect = default(HyperRect);
             rect.MinPoint = this.MinPoint;
             rect.MaxPoint = this.MaxPoint;
             return rect;
