@@ -5,7 +5,7 @@
     <LangVersion>10</LangVersion>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <PackageId>compujuckel.Supercluster.KDTree</PackageId>
-    <Version>1.0.5</Version>
+    <Version>1.0.6</Version>
     <Authors>ericreg, compujuckel</Authors>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <RepositoryUrl>https://github.com/compujuckel/Supercluster.KDTree</RepositoryUrl>

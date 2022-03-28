@@ -72,6 +72,11 @@ namespace Supercluster.KDTree
             // This is equivalent to finding the power of 2 greater than the number of points
             var elementCount = (int)Math.Pow(2, (int)(Math.Log(points.Length) / Math.Log(2)) + 1);
             this.InternalPointArray = new Vector3[elementCount];
+            for (int i = 0; i < this.InternalPointArray.Length; i++)
+            {
+                this.InternalPointArray[i] = new Vector3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
+            }
+
             this.InternalNodeArray = new TNode[elementCount];
             this.Count = points.Length;
             this.GenerateTree(0, 0, points, nodes);
