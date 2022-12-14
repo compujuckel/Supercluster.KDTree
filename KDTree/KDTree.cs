@@ -45,18 +45,16 @@ namespace Supercluster.KDTree
         /// <summary>
         /// The array in which the binary tree is stored. Enumerating this array is a level-order traversal of the tree.
         /// </summary>
-        public Vector3[] InternalPointArray { get; }
+        public Span<Vector3> InternalPointArray => this.internalPointMemory.Span;
+
+        private readonly Memory<Vector3> internalPointMemory;
 
         /// <summary>
         /// The array in which the node objects are stored. There is a one-to-one correspondence with this array and the <see cref="InternalPointArray"/>.
         /// </summary>
-        public TNode[] InternalNodeArray { get; }
+        public Span<TNode> InternalNodeArray => this.internalNodeMemory.Span;
 
-        /// <summary>
-        /// Gets a <see cref="BinaryTreeNavigator{TPoint,TNode}"/> that allows for manual tree navigation,
-        /// </summary>
-        public BinaryTreeNavigator<Vector3, TNode> Navigator
-            => new BinaryTreeNavigator<Vector3, TNode>(this.InternalPointArray, this.InternalNodeArray);
+        private readonly Memory<TNode> internalNodeMemory;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="KDTree{TDimension,TNode}"/> class.
@@ -67,19 +65,25 @@ namespace Supercluster.KDTree
             Vector3[] points,
             TNode[] nodes)
         {
-
             // Calculate the number of nodes needed to contain the binary tree.
             // This is equivalent to finding the power of 2 greater than the number of points
             var elementCount = (int)Math.Pow(2, (int)(Math.Log(points.Length) / Math.Log(2)) + 1);
-            this.InternalPointArray = new Vector3[elementCount];
+            this.internalPointMemory = new Vector3[elementCount];
             for (int i = 0; i < this.InternalPointArray.Length; i++)
             {
                 this.InternalPointArray[i] = new Vector3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
             }
 
-            this.InternalNodeArray = new TNode[elementCount];
+            this.internalNodeMemory = new TNode[elementCount];
             this.Count = points.Length;
             this.GenerateTree(0, 0, points, nodes);
+        }
+
+        public KDTree(Memory<Vector3> points, Memory<TNode> nodes, int nodeCount)
+        {
+            this.internalPointMemory = points;
+            this.internalNodeMemory = nodes;
+            this.Count = nodeCount;
         }
 
         /// <summary>
@@ -144,6 +148,9 @@ namespace Supercluster.KDTree
             IReadOnlyCollection<Vector3> points,
             IEnumerable<TNode> nodes)
         {
+            var pointsSpan = this.InternalPointArray;
+            var nodesSpan = this.InternalNodeArray;
+
             // See wikipedia for a good explanation kd-tree construction.
             // https://en.wikipedia.org/wiki/K-d_tree
 
@@ -151,7 +158,7 @@ namespace Supercluster.KDTree
             var zippedList = points.Zip(nodes, (p, n) => new { Point = p, Node = n });
 
             // sort the points along the current dimension
-            var sortedPoints = zippedList.OrderBy(z => z.Point.Dim(dim)).ToArray();
+            var sortedPoints = zippedList.OrderBy(z => z.Point[dim]).ToArray();
 
             // get the point which has the median value of the current dimension.
             var medianPoint = sortedPoints[points.Count / 2];
@@ -159,8 +166,8 @@ namespace Supercluster.KDTree
 
             // The point with the median value all the current dimension now becomes the value of the current tree node
             // The previous node becomes the parents of the current node.
-            this.InternalPointArray[index] = medianPoint.Point;
-            this.InternalNodeArray[index] = medianPoint.Node;
+            pointsSpan[index] = medianPoint.Point;
+            nodesSpan[index] = medianPoint.Node;
 
             // We now split the sorted points into 2 groups
             // 1st group: points before the median
@@ -202,8 +209,8 @@ namespace Supercluster.KDTree
             {
                 if (leftPoints.Length == 1)
                 {
-                    this.InternalPointArray[LeftChildIndex(index)] = leftPoints[0];
-                    this.InternalNodeArray[LeftChildIndex(index)] = leftNodes[0];
+                    pointsSpan[LeftChildIndex(index)] = leftPoints[0];
+                    nodesSpan[LeftChildIndex(index)] = leftNodes[0];
                 }
             }
             else
@@ -216,8 +223,8 @@ namespace Supercluster.KDTree
             {
                 if (rightPoints.Length == 1)
                 {
-                    this.InternalPointArray[RightChildIndex(index)] = rightPoints[0];
-                    this.InternalNodeArray[RightChildIndex(index)] = rightNodes[0];
+                    pointsSpan[RightChildIndex(index)] = rightPoints[0];
+                    nodesSpan[RightChildIndex(index)] = rightNodes[0];
                 }
             }
             else
@@ -243,7 +250,10 @@ namespace Supercluster.KDTree
             BoundedPriorityList<int, float> nearestNeighbors,
             float maxSearchRadiusSquared)
         {
-            if (this.InternalPointArray.Length <= nodeIndex || nodeIndex < 0)
+            var points = this.InternalPointArray;
+            var nodes = this.InternalNodeArray;
+
+            if (points.Length <= nodeIndex || nodeIndex < 0)
             {
                 return;
             }
@@ -254,13 +264,13 @@ namespace Supercluster.KDTree
             // Split our hyper-rectangle into 2 sub rectangles along the current
             // node's point on the current dimension
             var leftRect = rect.Clone();
-            leftRect.MaxPoint.DimRef(dim) = this.InternalPointArray[nodeIndex].DimRef(dim);
+            leftRect.MaxPoint[dim] = points[nodeIndex][dim];
 
             var rightRect = rect.Clone();
-            rightRect.MinPoint.DimRef(dim) = this.InternalPointArray[nodeIndex].DimRef(dim);
+            rightRect.MinPoint[dim] = points[nodeIndex][dim];
 
             // Determine which side the target resides in
-            var compare = target.DimRef(dim).CompareTo(this.InternalPointArray[nodeIndex].DimRef(dim));
+            var compare = target[dim].CompareTo(points[nodeIndex][dim]);
 
             var nearerRect = compare <= 0 ? leftRect : rightRect;
             var furtherRect = compare <= 0 ? rightRect : leftRect;
@@ -311,7 +321,7 @@ namespace Supercluster.KDTree
             }
 
             // Try to add the current node to our nearest neighbors list
-            distanceSquaredToTarget = Vector3.DistanceSquared(this.InternalPointArray[nodeIndex], target);
+            distanceSquaredToTarget = Vector3.DistanceSquared(points[nodeIndex], target);
             if (distanceSquaredToTarget.CompareTo(maxSearchRadiusSquared) <= 0)
             {
                 nearestNeighbors.Add(nodeIndex, distanceSquaredToTarget);

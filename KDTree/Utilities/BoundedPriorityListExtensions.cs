@@ -28,12 +28,14 @@ namespace Supercluster.KDTree.Utilities
            KDTree<TNode> tree)
             where TPriority : IComparable<TPriority>
         {
+            var points = tree.InternalPointArray;
+            var nodes = tree.InternalNodeArray;
             var array = new Tuple<Vector3, TNode>[list.Count];
             for (var i = 0; i < list.Count; i++)
             {
                 array[i] = new Tuple<Vector3, TNode>(
-                    tree.InternalPointArray[list[i]],
-                    tree.InternalNodeArray[list[i]]);
+                    points[list[i]],
+                    nodes[list[i]]);
             }
 
             return array;
