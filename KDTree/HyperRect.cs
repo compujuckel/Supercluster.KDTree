@@ -21,6 +21,9 @@ namespace Supercluster.KDTree
         /// </summary>
         public Vector3 MaxPoint;
 
+        // TODO remove once https://github.com/dotnet/runtime/issues/79118 is fixed
+        public int Dummy;
+
         /// <summary>
         /// Get a hyper rectangle which spans the entire implicit metric space.
         /// </summary>
