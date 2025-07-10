@@ -32,6 +32,8 @@ namespace Supercluster.KDTree
     [Serializable]
     public class KDTree<TNode>
     {
+        private const int AllocThreshold = 128;
+
         /// <summary>
         /// The number of points in the KDTree
         /// </summary>
@@ -94,11 +96,31 @@ namespace Supercluster.KDTree
         /// <returns>The</returns>
         public Tuple<Vector3, TNode>[] NearestNeighbors(Vector3 point, int neighbors)
         {
-            var nearestNeighborList = new BoundedPriorityList<int, float>(neighbors, true);
+            Span<int> elements = neighbors < AllocThreshold ? stackalloc int[neighbors] : new int[neighbors];
+            Span<float> priorities = neighbors < AllocThreshold ? stackalloc float[neighbors] : new float[neighbors];
+
+            var nearestNeighborList = new BoundedPriorityList<int, float>(elements: elements, priorities);
             var rect = HyperRect.Infinite();
-            this.SearchForNearestNeighbors(0, point, rect, 0, nearestNeighborList, float.MaxValue);
+            this.SearchForNearestNeighbors(0, point, rect, 0, ref nearestNeighborList, float.MaxValue);
 
             return nearestNeighborList.ToResultSet(this);
+        }
+
+        public ValueTuple<Vector3, TNode>? NearestNeighbor(Vector3 point)
+        {
+            Span<int> elements = stackalloc int[1];
+            Span<float> priorities = stackalloc float[1];
+
+            var nearestNeighborList = new BoundedPriorityList<int, float>(elements: elements, priorities);
+            var rect = HyperRect.Infinite();
+            this.SearchForNearestNeighbors(0, point, rect, 0, ref nearestNeighborList, float.MaxValue);
+
+            if (nearestNeighborList.Count == 0)
+            {
+                return null;
+            }
+
+            return (this.InternalPointArray[nearestNeighborList[0]], this.InternalNodeArray[nearestNeighborList[0]]);
         }
 
         /// <summary>
@@ -106,31 +128,22 @@ namespace Supercluster.KDTree
         /// </summary>
         /// <param name="center">The center of the hyper-sphere</param>
         /// <param name="radius">The radius of the hyper-sphere</param>
-        /// <param name="neighboors">The number of neighbors to return.</param>
+        /// <param name="neighbors">The number of neighbors to return.</param>
         /// <returns>The specified number of closest points in the hyper-sphere</returns>
-        public Tuple<Vector3, TNode>[] RadialSearch(Vector3 center, float radius, int neighboors = -1)
+        public Tuple<Vector3, TNode>[] RadialSearch(Vector3 center, float radius, int neighbors = -1)
         {
-            var nearestNeighbors = new BoundedPriorityList<int, float>(this.Count);
-            if (neighboors == -1)
-            {
-                this.SearchForNearestNeighbors(
-                    0,
-                    center,
-                    HyperRect.Infinite(),
-                    0,
-                    nearestNeighbors,
-                    radius);
-            }
-            else
-            {
-                this.SearchForNearestNeighbors(
-                    0,
-                    center,
-                    HyperRect.Infinite(),
-                    0,
-                    nearestNeighbors,
-                    radius);
-            }
+            Span<int> elements = this.Count < AllocThreshold ? stackalloc int[neighbors] : new int[neighbors];
+            Span<float> priorities = this.Count < AllocThreshold ? stackalloc float[neighbors] : new float[neighbors];
+
+            var nearestNeighbors = new BoundedPriorityList<int, float>(elements: elements, priorities);
+
+            this.SearchForNearestNeighbors(
+                0,
+                center,
+                HyperRect.Infinite(),
+                0,
+                ref nearestNeighbors,
+                radius);
 
             return nearestNeighbors.ToResultSet(this);
         }
@@ -247,7 +260,7 @@ namespace Supercluster.KDTree
             Vector3 target,
             HyperRect rect,
             int dimension,
-            BoundedPriorityList<int, float> nearestNeighbors,
+            ref BoundedPriorityList<int, float> nearestNeighbors,
             float maxSearchRadiusSquared)
         {
             var points = this.InternalPointArray;
@@ -284,7 +297,7 @@ namespace Supercluster.KDTree
                 target,
                 nearerRect,
                 dimension + 1,
-                nearestNeighbors,
+                ref nearestNeighbors,
                 maxSearchRadiusSquared);
 
             // Walk down into the further branch but only if our capacity hasn't been reached
@@ -304,7 +317,7 @@ namespace Supercluster.KDTree
                             target,
                             furtherRect,
                             dimension + 1,
-                            nearestNeighbors,
+                            ref nearestNeighbors,
                             maxSearchRadiusSquared);
                     }
                 }
@@ -315,7 +328,7 @@ namespace Supercluster.KDTree
                         target,
                         furtherRect,
                         dimension + 1,
-                        nearestNeighbors,
+                        ref nearestNeighbors,
                         maxSearchRadiusSquared);
                 }
             }

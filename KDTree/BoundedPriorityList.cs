@@ -5,8 +5,6 @@
 namespace Supercluster.KDTree
 {
     using System;
-    using System.Collections;
-    using System.Collections.Generic;
     using System.Runtime.CompilerServices;
 
     /// <summary>
@@ -15,30 +13,30 @@ namespace Supercluster.KDTree
     /// </summary>
     /// <typeparam name="TElement">The type of element the list maintains.</typeparam>
     /// <typeparam name="TPriority">The type the elements are prioritized by.</typeparam>
-    public class BoundedPriorityList<TElement, TPriority> : IEnumerable<TElement>
+    public ref struct BoundedPriorityList<TElement, TPriority>
         where TPriority : IComparable<TPriority>
     {
         /// <summary>
         /// The list holding the actual elements
         /// </summary>
-        private readonly List<TElement> elementList;
+        private readonly Span<TElement> elementList;
 
         /// <summary>
         /// The list of priorities for each element.
         /// There is a one-to-one correspondence between the
-        /// priority list ad the element list.
+        /// priority list and the element list.
         /// </summary>
-        private readonly List<TPriority> priorityList;
+        private readonly Span<TPriority> priorityList;
 
         /// <summary>
         /// Gets the element with the largest priority.
         /// </summary>
-        public TElement MaxElement => this.elementList[this.elementList.Count - 1];
+        public TElement MaxElement => this.elementList[this.Count - 1];
 
         /// <summary>
         /// Gets the largest priority.
         /// </summary>
-        public TPriority MaxPriority => this.priorityList[this.priorityList.Count - 1];
+        public TPriority MaxPriority => this.priorityList[this.Count - 1];
 
         /// <summary>
         /// Gets the element with the lowest priority.
@@ -51,7 +49,7 @@ namespace Supercluster.KDTree
         public TPriority MinPriority => this.priorityList[0];
 
         /// <summary>
-        /// Gets the maximum allows capacity for the <see cref="BoundedPriorityList{TElement,TPriority}"/>
+        /// Gets the maximum allowed capacity for the <see cref="BoundedPriorityList{TElement,TPriority}"/>
         /// </summary>
         public int Capacity { get; }
 
@@ -63,7 +61,7 @@ namespace Supercluster.KDTree
         /// <summary>
         /// Returns the count of items currently in the list.
         /// </summary>
-        public int Count => this.priorityList.Count;
+        public int Count { get; private set; }
 
         /// <summary>
         /// Indexer for the internal element array.
@@ -73,27 +71,20 @@ namespace Supercluster.KDTree
         public TElement this[int index] => this.elementList[index];
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="BoundedPriorityList{TElement, TPriority}"/> class.
-        /// Note: You should not have <paramref name="allocate"/> set to true, and the capacity set to a very large number.
-        /// Especially if you will be creating and destroying many <see cref="BoundedPriorityList{TElement,TPriority}"/> very rapidly.
-        /// If you ignore this advice you will create lots of memory pressure. If you don't understand why this is a problem you should
-        /// understand the garbage collector. Please read: https://msdn.microsoft.com/en-us/library/ee787088.aspx
+        /// Initializes a new instance of the <see cref="BoundedPriorityList{TElement, TPriority}"/> struct.
         /// </summary>
-        /// <param name="capacity">The maximum capacity of the list.</param>
-        /// <param name="allocate">If true, initializes the internal lists for the <see cref="BoundedPriorityList{TElement,TPriority}"/> with an initial capacity of <paramref name="capacity"/>.</param>
-        public BoundedPriorityList(int capacity, bool allocate = false)
+        /// <param name="elements">Span of elements</param>
+        /// <param name="priorities">Span of priorities</param>
+        public BoundedPriorityList(Span<TElement> elements, Span<TPriority> priorities)
         {
-            this.Capacity = capacity;
-            if (allocate)
+            if (priorities.Length != elements.Length)
             {
-                this.priorityList = new List<TPriority>(capacity);
-                this.elementList = new List<TElement>(capacity);
+                throw new ArgumentException("The priorities and elements must be the same length.");
             }
-            else
-            {
-                this.priorityList = new List<TPriority>();
-                this.elementList = new List<TElement>();
-            }
+
+            this.Capacity = priorities.Length;
+            this.priorityList = priorities;
+            this.elementList = elements;
         }
 
         /// <summary>
@@ -111,46 +102,44 @@ namespace Supercluster.KDTree
         {
             if (this.Count >= this.Capacity)
             {
-                if (this.priorityList[this.priorityList.Count - 1].CompareTo(priority) < 0)
+                if (this.priorityList[this.Count - 1].CompareTo(priority) < 0)
                 {
                     return;
                 }
 
-                var index = this.priorityList.BinarySearch(priority);
+                var index = this.priorityList.Slice(0, this.Count).BinarySearch(priority);
                 index = index >= 0 ? index : ~index;
 
-                this.priorityList.Insert(index, priority);
-                this.elementList.Insert(index, item);
-
-                this.priorityList.RemoveAt(this.priorityList.Count - 1);
-                this.elementList.RemoveAt(this.elementList.Count - 1);
+                this.Insert(index, priority, item);
             }
             else
             {
-                var index = this.priorityList.BinarySearch(priority);
+                var index = this.priorityList.Slice(0, this.Count).BinarySearch(priority);
                 index = index >= 0 ? index : ~index;
 
-                this.priorityList.Insert(index, priority);
-                this.elementList.Insert(index, item);
+                this.Insert(index, priority, item);
             }
         }
 
-        /// <summary>
-        /// Returns an enumerator that iterates through the collection.
-        /// </summary>
-        /// <returns>An enumerator.</returns>
-        public IEnumerator<TElement> GetEnumerator()
+        private void Insert(int index, TPriority priority, TElement item)
         {
-            return this.elementList.GetEnumerator();
-        }
+            // Note that insertions at the end are legal.
+            if ((uint)index > (uint)this.Count)
+            {
+                throw new ArgumentOutOfRangeException(nameof(index));
+            }
 
-        /// <summary>
-        /// Returns an enumerator that iterates through the collection.
-        /// </summary>
-        /// <returns>An enumerator.</returns>
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return this.GetEnumerator();
+            var removeLast = this.IsFull ? 1 : 0;
+
+            if (index < this.Count)
+            {
+                this.priorityList.Slice(index, this.Count - index - removeLast).CopyTo(this.priorityList.Slice(index + 1));
+                this.elementList.Slice(index, this.Count - index - removeLast).CopyTo(this.elementList.Slice(index + 1));
+            }
+
+            this.priorityList[index] = priority;
+            this.elementList[index] = item;
+            this.Count += 1 - removeLast;
         }
     }
 }
